@@ -62,10 +62,6 @@ const upload = multer({ storage: storage });
 
 // --- ROUTES ---
 
-// Root Route (Health Check)
-app.get('/', (req, res) => {
-    res.send("✅ Security Backend is Running! System Ready.");
-});
 
 // Admin Login
 app.post('/api/login', (req, res) => {
