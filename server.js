@@ -5,15 +5,17 @@ const mongoose = require('mongoose');
 const nodemailer = require('nodemailer');
 
 const app = express();
-const PORT = process.env.PORT || 3000; // Important for deployment
+const PORT = process.env.PORT || 3000;
 
 // ============================================
-// 👇 ENTER YOUR EMAIL DETAILS HERE 👇
+// 🔒 CONFIGURATION: Env Variables or Fallbacks
 // ============================================
-const MY_EMAIL = 'vtanujreddy@gmail.com'; 
-const MY_APP_PASSWORD = 'dmdoucxkvtbujhfw'; 
+// Ideally, use a .env file locally (npm install dotenv)
+const MY_EMAIL = process.env.EMAIL_USER || 'vtanujreddy@gmail.com'; 
+const MY_APP_PASSWORD = process.env.EMAIL_PASS || 'dmdoucxkvtbujhfw'; 
 const DESTINATION_EMAIL = 'vakadatanujreddy2006@gmail.com'; 
-// ============================================
+// Replace with your actual connection string if running locally without env vars
+const MONGO_URI = process.env.MONGO_URI || 'mongodb+srv://vakadatanujreddy:charutanu@cluster1.qsnbkzc.mongodb.net/security_db?appName=Cluster1'; 
 
 // --- EMAIL CONFIG ---
 const transporter = nodemailer.createTransport({
@@ -29,12 +31,9 @@ app.use(cors());
 app.use(express.json());
 
 // --- DATABASE CONNECTION ---
-// FOR DEPLOYMENT: Replace this string with your MongoDB Atlas Connection String
-const MONGO_URI = 'mongodb+srv://vakadatanujreddy:charutanu@cluster1.qsnbkzc.mongodb.net/?appName=Cluster1'; 
-
 mongoose.connect(MONGO_URI)
-    .then(() => console.log("Connected to MongoDB"))
-    .catch(err => console.error("Mongo Error:", err));
+    .then(() => console.log("✅ Connected to MongoDB Atlas"))
+    .catch(err => console.error("❌ Mongo Connection Error:", err));
 
 // --- SCHEMAS ---
 
@@ -42,36 +41,40 @@ mongoose.connect(MONGO_URI)
 const LogSchema = new mongoose.Schema({ 
     name: String, 
     timestamp: String, 
-    imageData: String, // Contains the actual photo data
-    contentType: String // e.g., 'image/jpeg'
+    imageData: String, 
+    contentType: String 
 });
 const Log = mongoose.model('Log', LogSchema);
 
-// 2. Student Schema (Stores image as Base64 String)
+// 2. Student Schema (Stores registered faces)
 const StudentSchema = new mongoose.Schema({
     name: { type: String, required: true },
-    imageData: String, // Contains the actual photo data
+    imageData: String, 
     contentType: String,
     registeredAt: { type: Date, default: Date.now }
 });
 const Student = mongoose.model('Student', StudentSchema);
 
-
 // --- MULTER (MEMORY STORAGE) ---
-// We use memoryStorage to get the 'buffer' (raw data) instead of saving to disk
+// Stores files in RAM temporarily so we can save to Mongo as Base64
 const storage = multer.memoryStorage();
 const upload = multer({ storage: storage });
 
-
 // --- ROUTES ---
 
+// Root Route (Health Check)
+app.get('/', (req, res) => {
+    res.send("✅ Security Backend is Running! System Ready.");
+});
+
+// Admin Login
 app.post('/api/login', (req, res) => {
     const { password } = req.body;
     if (password === "admin123") res.json({ success: true, token: "admin-token" });
     else res.status(401).json({ success: false, message: "Invalid Password" });
 });
 
-// GET LOGS (Now sends the base64 image string to frontend)
+// Get Logs for Dashboard
 app.get('/api/logs', async (req, res) => {
     try {
         const logs = await Log.find().sort({ _id: -1 });
@@ -81,14 +84,14 @@ app.get('/api/logs', async (req, res) => {
     }
 });
 
-// SAVE LOG (Security Alert)
+// Receive Log from Python Script (Intruder/Student Detection)
 app.post('/api/log', upload.single('image'), async (req, res) => {
     const { name, timestamp } = req.body;
     
-    // Convert image buffer to Base64 string
     let imgData = null;
     let contentType = null;
 
+    // If an image was sent (Intruder), convert to Base64
     if (req.file) {
         imgData = req.file.buffer.toString('base64');
         contentType = req.file.mimetype;
@@ -104,38 +107,40 @@ app.post('/api/log', upload.single('image'), async (req, res) => {
     await newLog.save();
     console.log(`[DB] Saved log for: ${name}`);
 
-    // --- EMAIL ALERT ---
-    if (name === "Unknown") {
-        if (true) { 
-            console.log(`[ALERT] Sending Email...`);
-            const mailOptions = {
-                from: MY_EMAIL,
-                to: DESTINATION_EMAIL,
-                subject: '🚨 SECURITY ALERT: Intruder Detected',
-                text: `Warning!\n\nAn unknown person was detected.\nTime: ${timestamp}`,
-                attachments: []
-            };
+    // --- EMAIL ALERT LOGIC ---
+    if (name === "Unknown" && MY_EMAIL && MY_APP_PASSWORD) {
+        // Simple Logic: Always send email for intruder
+        // (In production, you might want to add a time-based throttle here)
+        console.log(`[ALERT] Sending Email...`);
+        
+        const mailOptions = {
+            from: MY_EMAIL,
+            to: DESTINATION_EMAIL,
+            subject: '🚨 SECURITY ALERT: Intruder Detected',
+            text: `Warning!\n\nAn unknown person was detected.\nTime: ${timestamp}`,
+            attachments: []
+        };
 
-            // Attach image directly from Buffer (No file on disk needed)
-            if (req.file) {
-                mailOptions.attachments.push({
-                    filename: 'intruder.jpg',
-                    content: req.file.buffer // Nodemailer can send buffers directly!
-                });
-            }
+        // Attach the image buffer directly to the email
+        if (req.file) {
+            mailOptions.attachments.push({
+                filename: 'intruder.jpg',
+                content: req.file.buffer 
+            });
+        }
 
-            try {
-                await transporter.sendMail(mailOptions);
-                console.log(" -> Email Sent!");
-            } catch (error) {
-                console.error(" -> Email Failed:", error.message);
-            }
+        try {
+            await transporter.sendMail(mailOptions);
+            console.log(" -> Email Sent!");
+        } catch (error) {
+            console.error(" -> Email Failed:", error.message);
         }
     }
+    
     res.json({ message: "Log processed" });
 });
 
-// REGISTER STUDENT (Saves Image to DB)
+// Register New Student (From React Dashboard)
 app.post('/api/register', upload.single('photo'), async (req, res) => {
     try {
         const { studentName } = req.body;
@@ -144,7 +149,7 @@ app.post('/api/register', upload.single('photo'), async (req, res) => {
             return res.status(400).json({ success: false, message: "No photo uploaded" });
         }
 
-        // Convert Buffer to Base64 to store in MongoDB
+        // Convert Buffer to Base64
         const img64 = req.file.buffer.toString('base64');
 
         const newStudent = new Student({
@@ -154,28 +159,29 @@ app.post('/api/register', upload.single('photo'), async (req, res) => {
         });
 
         await newStudent.save();
-        console.log(`[REGISTER] Saved ${studentName} to MongoDB (Base64)`);
+        console.log(`[REGISTER] Saved ${studentName}`);
         
-        res.json({ success: true, message: "Student Registered in Database." });
+        res.json({ success: true, message: "Student Registered." });
     } catch (err) {
         console.error(err);
         res.status(500).json({ success: false, message: "Error saving to database." });
     }
 });
 
-// Helper route to check DB images easily
+// Get All Students (Used by Python Script to learn faces)
 app.get('/api/students', async (req, res) => {
-    const students = await Student.find();
-    res.json(students);
+    try {
+        const students = await Student.find();
+        res.json(students);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
 });
 
-app.listen(PORT, () => {
-    console.log(`Backend running on port ${PORT}`);
-});
-// ... (your existing app.listen code)
-app.get('/', (req, res) => {
-    res.send("✅ Backend is Live! System is ready.");
-});
-
-// Add this at the very end:
+// Export for Vercel
 module.exports = app;
+
+// Start Server Locally
+if (require.main === module) {
+    app.listen(PORT, () => console.log(`Backend running locally on port ${PORT}`));
+}
