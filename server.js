@@ -5,15 +5,15 @@ const mongoose = require('mongoose');
 const nodemailer = require('nodemailer');
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3000; // Important for deployment
 
 // ============================================
-// 🔒 SECURITY: We read these from Vercel Settings
+// 👇 ENTER YOUR EMAIL DETAILS HERE 👇
 // ============================================
-const MY_EMAIL = process.env.EMAIL_USER; 
-const MY_APP_PASSWORD = process.env.EMAIL_PASS; 
+const MY_EMAIL = 'vtanujreddy@gmail.com'; 
+const MY_APP_PASSWORD = 'dmdoucxkvtbujhfw'; 
 const DESTINATION_EMAIL = 'vakadatanujreddy2006@gmail.com'; 
-const MONGO_URI = process.env.MONGO_URI; 
+// ============================================
 
 // --- EMAIL CONFIG ---
 const transporter = nodemailer.createTransport({
@@ -29,41 +29,41 @@ app.use(cors());
 app.use(express.json());
 
 // --- DATABASE CONNECTION ---
-if (!MONGO_URI) {
-    console.error("❌ CRITICAL: MONGO_URI is missing in Environment Variables.");
-} else {
-    mongoose.connect(MONGO_URI)
-        .then(() => console.log("✅ Connected to MongoDB Atlas"))
-        .catch(err => console.error("❌ Mongo Error:", err));
-}
+// FOR DEPLOYMENT: Replace this string with your MongoDB Atlas Connection String
+const MONGO_URI = 'mongodb+srv://vakadatanujreddy:charutanu@cluster1.qsnbkzc.mongodb.net/?appName=Cluster1'; 
+
+mongoose.connect(MONGO_URI)
+    .then(() => console.log("Connected to MongoDB"))
+    .catch(err => console.error("Mongo Error:", err));
 
 // --- SCHEMAS ---
+
+// 1. Log Schema (Stores image as Base64 String)
 const LogSchema = new mongoose.Schema({ 
     name: String, 
     timestamp: String, 
-    imageData: String, 
-    contentType: String 
+    imageData: String, // Contains the actual photo data
+    contentType: String // e.g., 'image/jpeg'
 });
 const Log = mongoose.model('Log', LogSchema);
 
+// 2. Student Schema (Stores image as Base64 String)
 const StudentSchema = new mongoose.Schema({
     name: { type: String, required: true },
-    imageData: String, 
+    imageData: String, // Contains the actual photo data
     contentType: String,
     registeredAt: { type: Date, default: Date.now }
 });
 const Student = mongoose.model('Student', StudentSchema);
 
+
 // --- MULTER (MEMORY STORAGE) ---
+// We use memoryStorage to get the 'buffer' (raw data) instead of saving to disk
 const storage = multer.memoryStorage();
 const upload = multer({ storage: storage });
 
-// --- ROUTES ---
 
-// Test Route
-app.get('/', (req, res) => {
-    res.send("Security System Backend is Live!");
-});
+// --- ROUTES ---
 
 app.post('/api/login', (req, res) => {
     const { password } = req.body;
@@ -71,6 +71,7 @@ app.post('/api/login', (req, res) => {
     else res.status(401).json({ success: false, message: "Invalid Password" });
 });
 
+// GET LOGS (Now sends the base64 image string to frontend)
 app.get('/api/logs', async (req, res) => {
     try {
         const logs = await Log.find().sort({ _id: -1 });
@@ -80,9 +81,11 @@ app.get('/api/logs', async (req, res) => {
     }
 });
 
+// SAVE LOG (Security Alert)
 app.post('/api/log', upload.single('image'), async (req, res) => {
     const { name, timestamp } = req.body;
     
+    // Convert image buffer to Base64 string
     let imgData = null;
     let contentType = null;
 
@@ -102,8 +105,7 @@ app.post('/api/log', upload.single('image'), async (req, res) => {
     console.log(`[DB] Saved log for: ${name}`);
 
     // --- EMAIL ALERT ---
-    if (name === "Unknown" && MY_EMAIL && MY_APP_PASSWORD) {
-        // Simple throttle logic could go here
+    if (name === "Unknown") {
         if (true) { 
             console.log(`[ALERT] Sending Email...`);
             const mailOptions = {
@@ -114,10 +116,11 @@ app.post('/api/log', upload.single('image'), async (req, res) => {
                 attachments: []
             };
 
+            // Attach image directly from Buffer (No file on disk needed)
             if (req.file) {
                 mailOptions.attachments.push({
                     filename: 'intruder.jpg',
-                    content: req.file.buffer 
+                    content: req.file.buffer // Nodemailer can send buffers directly!
                 });
             }
 
@@ -132,6 +135,7 @@ app.post('/api/log', upload.single('image'), async (req, res) => {
     res.json({ message: "Log processed" });
 });
 
+// REGISTER STUDENT (Saves Image to DB)
 app.post('/api/register', upload.single('photo'), async (req, res) => {
     try {
         const { studentName } = req.body;
@@ -140,6 +144,7 @@ app.post('/api/register', upload.single('photo'), async (req, res) => {
             return res.status(400).json({ success: false, message: "No photo uploaded" });
         }
 
+        // Convert Buffer to Base64 to store in MongoDB
         const img64 = req.file.buffer.toString('base64');
 
         const newStudent = new Student({
@@ -149,27 +154,25 @@ app.post('/api/register', upload.single('photo'), async (req, res) => {
         });
 
         await newStudent.save();
-        console.log(`[REGISTER] Saved ${studentName}`);
+        console.log(`[REGISTER] Saved ${studentName} to MongoDB (Base64)`);
         
-        res.json({ success: true, message: "Student Registered." });
+        res.json({ success: true, message: "Student Registered in Database." });
     } catch (err) {
         console.error(err);
         res.status(500).json({ success: false, message: "Error saving to database." });
     }
 });
 
+// Helper route to check DB images easily
 app.get('/api/students', async (req, res) => {
     const students = await Student.find();
     res.json(students);
 });
 
-// --- VERCEL CONFIGURATION ---
-// This allows Vercel to turn this Express app into a serverless function
-module.exports = app;
+app.listen(PORT, () => {
+    console.log(`Backend running on port ${PORT}`);
+});
+// ... (your existing app.listen code)
 
-// This allows you to run it locally with `node index.js`
-if (require.main === module) {
-    app.listen(PORT, () => {
-        console.log(`Backend running locally on port ${PORT}`);
-    });
-}
+// Add this at the very end:
+module.exports = app;
