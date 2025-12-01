@@ -173,6 +173,9 @@ app.listen(PORT, () => {
     console.log(`Backend running on port ${PORT}`);
 });
 // ... (your existing app.listen code)
+app.get('/', (req, res) => {
+    res.send("✅ Backend is Live! System is ready.");
+});
 
 // Add this at the very end:
 module.exports = app;
