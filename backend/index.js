@@ -5,17 +5,16 @@ const mongoose = require('mongoose');
 const nodemailer = require('nodemailer');
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = 5000; // Fixed to 5000 for local development
 
 // ============================================
-// 🔒 CONFIGURATION: Env Variables or Fallbacks
+// 🔒 CONFIGURATION
 // ============================================
-// Ideally, use a .env file locally (npm install dotenv)
-const MY_EMAIL = process.env.EMAIL_USER || 'vtanujreddy@gmail.com'; 
-const MY_APP_PASSWORD = process.env.EMAIL_PASS || 'dmdoucxkvtbujhfw'; 
+// ⚠️ Replace 'PUT_YOUR_REAL_PASSWORD_HERE' with your actual App Password
+const MY_EMAIL = 'vtanujreddy@gmail.com'; 
+const MY_APP_PASSWORD = 'PUT_YOUR_REAL_PASSWORD_HERE'; 
 const DESTINATION_EMAIL = 'vakadatanujreddy2006@gmail.com'; 
-// Replace with your actual connection string if running locally without env vars
-const MONGO_URI = process.env.MONGO_URI || 'mongodb+srv://vakadatanujreddy:charutanu@cluster1.qsnbkzc.mongodb.net/security_db?appName=Cluster1'; 
+const MONGO_URI = 'mongodb+srv://vakadatanujreddy:charutanu@cluster1.qsnbkzc.mongodb.net/security_db?appName=Cluster1'; 
 
 // --- EMAIL CONFIG ---
 const transporter = nodemailer.createTransport({
@@ -36,8 +35,6 @@ mongoose.connect(MONGO_URI)
     .catch(err => console.error("❌ Mongo Connection Error:", err));
 
 // --- SCHEMAS ---
-
-// 1. Log Schema (Stores image as Base64 String)
 const LogSchema = new mongoose.Schema({ 
     name: String, 
     timestamp: String, 
@@ -46,7 +43,6 @@ const LogSchema = new mongoose.Schema({
 });
 const Log = mongoose.model('Log', LogSchema);
 
-// 2. Student Schema (Stores registered faces)
 const StudentSchema = new mongoose.Schema({
     name: { type: String, required: true },
     imageData: String, 
@@ -56,21 +52,19 @@ const StudentSchema = new mongoose.Schema({
 const Student = mongoose.model('Student', StudentSchema);
 
 // --- MULTER (MEMORY STORAGE) ---
-// Stores files in RAM temporarily so we can save to Mongo as Base64
 const storage = multer.memoryStorage();
 const upload = multer({ storage: storage });
 
 // --- ROUTES ---
 
-
-// Admin Login
+// 1. Admin Login
 app.post('/api/login', (req, res) => {
     const { password } = req.body;
     if (password === "admin123") res.json({ success: true, token: "admin-token" });
     else res.status(401).json({ success: false, message: "Invalid Password" });
 });
 
-// Get Logs for Dashboard
+// 2. Get Logs for Dashboard
 app.get('/api/logs', async (req, res) => {
     try {
         const logs = await Log.find().sort({ _id: -1 });
@@ -80,14 +74,13 @@ app.get('/api/logs', async (req, res) => {
     }
 });
 
-// Receive Log from Python Script (Intruder/Student Detection)
+// 3. Receive Log from Python Script
 app.post('/api/log', upload.single('image'), async (req, res) => {
     const { name, timestamp } = req.body;
     
     let imgData = null;
     let contentType = null;
 
-    // If an image was sent (Intruder), convert to Base64
     if (req.file) {
         imgData = req.file.buffer.toString('base64');
         contentType = req.file.mimetype;
@@ -104,9 +97,7 @@ app.post('/api/log', upload.single('image'), async (req, res) => {
     console.log(`[DB] Saved log for: ${name}`);
 
     // --- EMAIL ALERT LOGIC ---
-    if (name === "Unknown" && MY_EMAIL && MY_APP_PASSWORD) {
-        // Simple Logic: Always send email for intruder
-        // (In production, you might want to add a time-based throttle here)
+    if (name === "Unknown") {
         console.log(`[ALERT] Sending Email...`);
         
         const mailOptions = {
@@ -117,7 +108,6 @@ app.post('/api/log', upload.single('image'), async (req, res) => {
             attachments: []
         };
 
-        // Attach the image buffer directly to the email
         if (req.file) {
             mailOptions.attachments.push({
                 filename: 'intruder.jpg',
@@ -136,7 +126,7 @@ app.post('/api/log', upload.single('image'), async (req, res) => {
     res.json({ message: "Log processed" });
 });
 
-// Register New Student (From React Dashboard)
+// 4. Register New Student
 app.post('/api/register', upload.single('photo'), async (req, res) => {
     try {
         const { studentName } = req.body;
@@ -145,7 +135,6 @@ app.post('/api/register', upload.single('photo'), async (req, res) => {
             return res.status(400).json({ success: false, message: "No photo uploaded" });
         }
 
-        // Convert Buffer to Base64
         const img64 = req.file.buffer.toString('base64');
 
         const newStudent = new Student({
@@ -164,7 +153,7 @@ app.post('/api/register', upload.single('photo'), async (req, res) => {
     }
 });
 
-// Get All Students (Used by Python Script to learn faces)
+// 5. Get All Students (For Python Script)
 app.get('/api/students', async (req, res) => {
     try {
         const students = await Student.find();
@@ -174,10 +163,9 @@ app.get('/api/students', async (req, res) => {
     }
 });
 
-// Export for Vercel
-module.exports = app;
-
-// Start Server Locally
-if (require.main === module) {
-    app.listen(PORT, () => console.log(`Backend running locally on port ${PORT}`));
-}
+// --- START SERVER ---
+app.listen(PORT, () => {
+    console.log(`\n--------------------------------------------------`);
+    console.log(`🚀 Backend running locally on: http://localhost:${PORT}`);
+    console.log(`--------------------------------------------------\n`);
+});

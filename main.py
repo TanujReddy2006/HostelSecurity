@@ -10,7 +10,7 @@ from insightface.app import FaceAnalysis
 # 👇 PASTE YOUR VERCEL LINK HERE 👇
 # ==========================================
 # Do not add a trailing slash (e.g., use "https://myapp.vercel.app")
-SERVER_URL = "https://hostel-security-flax.vercel.app" 
+SERVER_URL = "http://localhost:5000" 
 # ==========================================
 
 # AI Settings
